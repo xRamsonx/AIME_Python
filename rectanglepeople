@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Oct 29 15:13:32 2020
+
+@author: ida
+"""
+
+import cv2
+import numpy as np
+
+frame = cv2.imread('gut6.png')
+# Resize to make processing faster
+frame = cv2.resize(frame, (640,480), interpolation = cv2.INTER_AREA)
+
+# Blur image to make contours easier to find
+radius = 10
+ksize = int(2 * round(radius) + 1)
+image = cv2.blur(frame, (ksize, ksize))
+
+# Convert to HSV color for filtering
+hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+# Filter out all colors except red
+lower_red = np.array([0,87,211])
+upper_red = np.array([36,255,255])
+
+# Create binary mask to detect objects/contours
+mask = cv2.inRange(hsv, lower_red, upper_red)
+
+# Find contours and sort using contour area
+cnts = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
+i=0
+for i, c in enumerate(cnts):
+    # Calculate the area of each contour
+    area = cv2.contourArea(c)
+    print("area",area)
+
+for c in cnts:
+    # Once we hit smaller contours, stop the loop
+    if(cv2.contourArea(c) < 100):
+        break
+
+    # Draw bounding box around contours and write "Red Object" text
+    x,y,w,h = cv2.boundingRect(c)
+    
+    cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    print("center",x+1/2*w,y+1/2*w)
+    cv2.putText(frame,'Red Object', (x,y), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+    
+    
+# Write images to disk for debugging
+cv2.imwrite('thresh6.png', mask)
+cv2.imwrite('image6.png', frame)
+# cv2.circle(image, center_coordinates, radius, color, thickness)
