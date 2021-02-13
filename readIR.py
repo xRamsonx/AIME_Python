@@ -28,7 +28,7 @@ plt.ion()
 
 try:
         while(1):
-                time.sleep(1)
+                time.sleep(0.5)
                 i+=1
                 if(i>10): 
                         i=0
