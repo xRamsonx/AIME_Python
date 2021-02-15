@@ -15,6 +15,6 @@ If necessary calibrate the IR Sensor with calibrate_ir.py. For that you will nee
 Otherwise run readIR.py or readIRdata.py to stream the IR image to an location set inside the script.
 Before using trackNumberOfPeople.py make sure to set up the MAVSDK server. If it's your first time, take a look here: \
 https://www.hackster.io/mdobrea/c-and-python-interface-management-application-for-fmuk66-6dd935 \
-trackNumberOfPeople.py will use the telemetry data of your drone to calculate the number of people in an area and their relative position. The data will be streamed to an location set within the script.
+trackNumberOfPeople.py will use the telemetry data of your drone to calculate the number of people in an area and their relative position. The data will be streamed to an location set within the script. \
 Have Fun!
  
