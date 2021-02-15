@@ -10,8 +10,8 @@ import time
 #import matplotlib as mpl
 #mpl.use('tkagg') # to enable real-time plotting in Raspberry Pi
 import matplotlib.pyplot as plt
-import numpy as np
-
+import numpy as np	
+import cv2
 sensor = Adafruit_AMG88xx(1)
 # wait for AMG to boot
 sleep(0.1)
@@ -25,13 +25,17 @@ cal_pix = []
 time_prev = time.time() # time for analyzing time between plot updates
 i=0
 plt.ion()
+img_array = []
+print(cv2.getBuildInformation())
+img = cv2.imread("data/IR.png")
+height, width, layers = img.shape
+size = (width,height)
+gstreamdata="appsrc ! videoconvert! vpuenc_h264 bitrate=500 ! rtph264pay ! udpsink host=192.168.0.173 port=5600 sync=false"
+out=cv2.VideoWriter(gstreamdata,cv2.CAP_GSTREAMER,0, 20, size, True)
 
 try:
         while(1):
-                time.sleep(0.5)
-                i+=1
-                if(i>10): 
-                        i=0
+                time.sleep(0.1)
                 # calibration procedure #
                 if kk==0:
                         print("Sensor should have clear path to calibrate against environment")
@@ -64,6 +68,13 @@ try:
                 
                 plt.draw() # plots updated heat map
                 plt.savefig("data/IR.png", bbox_inches='tight')
+                img = cv2.imread("data/IR.png")
+                #img_array.append(img)
+                #out=cv2.VideoWriter('data/IR.mp4',cv2.VideoWriter_fourcc(*'mp4v'), 15, size)
+                #out=cv2.VideoWriter('data/IR.avi',cv2.VideoWriter_fourcc(*'XVID'), 15, size)
+                
+                
+                out.write(img)
                 cal_pix = [] # off-load variable for next reading
                 #print(time.time()-time_prev) # prints out time between plot updates
                 #time_prev = time.time()
