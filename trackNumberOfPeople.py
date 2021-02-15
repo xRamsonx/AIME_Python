@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
-
 import asyncio
 from mavsdk import System
 import numpy as np
-import cv2
+import cv2 #image 
 import time
 import sys
 import os.path
 sys.path.append(os.path.join(os.path.dirname(__file__),'..')) # this is done for the AMG88xx folder (you may have to rewrite this to include the path of your AMG file)
-from Adafruit_AMG88xx import Adafruit_AMG88xx
-import matplotlib.pyplot as plt
+from Adafruit_AMG88xx import Adafruit_AMG88xx #to read out the IR-sensor
+import matplotlib.pyplot as plt #to create heatmap from IR-Sensordata 
 
 def init():
     #Get callibration data
     global H0
     global a
     a,H0=np.loadtxt('data/calIR.csv')
-    
     
     #initalise IR Sensor
     global sensor
@@ -60,22 +58,27 @@ async def run():
     asyncio.ensure_future(get_center_of_people())
     asyncio.ensure_future(streamdata())
     asyncio.ensure_future(get_IR_data())
+    asyncio.ensure_future(print_center_of_people())
 
+
+###define async-functions
+##subscribe to drone position
 async def get_position(drone):
     global d_pos
     global height
     height=H0
     global has_pos
-    has_pos=False
+    has_pos=False #to not run into errors while no position was found e.g. indoor
     async for position in drone.telemetry.position():
         print(position)
         d_pos=position
         height=position.relative_altitude_m()
         has_pos=True
-        
+
+##define output
 async def print_center_of_people():
     while(1):
-        time.sleep(1)
+        time.sleep(1)#slows the output
         if(has_pos):
             if(has_heatsignal):
                 for i in range(IRpos):
@@ -85,47 +88,51 @@ async def print_center_of_people():
         else:	
             print("GPS signal not sufficient to get real position")
             if(has_pos):
-                print("Found target at:",IRpos[i],"px")
+                for i in range(IRpos):
+                    print("Found target at:",IRpos[i],"px")
             else:    
                 print("No target found")
+   
+##get IR-data continously             
 async def get_IR_data():
-        while(1):
-            global kk
-            time.sleep(0.1)
-            # calibration procedure #
-            if kk==0: 
-                print("Sensor should have clear path to calibrate against environment")
-                graph = plt.imshow(np.reshape(np.repeat(0,64),(8,8)),cmap=plt.cm.hot,interpolation='lanczos')
-                #plt.colorbar()
-                plt.axis('off')
-                plt.clim(1,8) # can set these limits to desired range or min/max of current sensor reading
-            norm_pix = sensor.readPixels() # read pixels
-            if kk<cal_size+1:
-                kk+=1
-            if kk==1:
-                cal_vec = norm_pix
-                continue
-            elif kk<=cal_size:
-                for xx in range(0,len(norm_pix)):
-                    cal_vec[xx]+=norm_pix[xx]
-                    if kk==cal_size:
-                        cal_vec[xx] = cal_vec[xx]/cal_size
-                continue
-            else:
-                [cal_pix.append(norm_pix[x]-cal_vec[x]) for x in range(0,len(norm_pix))]
-                if min(cal_pix)<0:
-                    for y in range(0,len(cal_pix)):
-                        cal_pix[y]+=abs(min(cal_pix))
-            # Save IR picture as png
-            graph.set_data(np.reshape(cal_pix,(8,8))) # updates heat map in 'real-time'
-            plt.draw() # plots updated heat map
-            global frame
-            plt.savefig("data/IR.png", bbox_inches='tight')
-
-async def get_center_of_people():
+    global kk
     while(1):
         time.sleep(0.1)
-        global frame
+        # calibration procedure #
+        if kk==0: 
+            print("Sensor should have clear path to calibrate against environment")
+            graph = plt.imshow(np.reshape(np.repeat(0,64),(8,8)),cmap=plt.cm.hot,interpolation='lanczos')
+            #plt.colorbar()
+            plt.axis('off')
+            plt.clim(1,8) # can set these limits to desired range or min/max of current sensor reading
+        norm_pix = sensor.readPixels() # read pixels
+        if kk<cal_size+1:
+            kk+=1
+        if kk==1:
+            cal_vec = norm_pix
+            continue
+        elif kk<=cal_size:
+            for xx in range(0,len(norm_pix)):
+                cal_vec[xx]+=norm_pix[xx]
+                if kk==cal_size:
+                    cal_vec[xx] = cal_vec[xx]/cal_size
+            continue
+        else:
+            [cal_pix.append(norm_pix[x]-cal_vec[x]) for x in range(0,len(norm_pix))]
+            if min(cal_pix)<0:
+                for y in range(0,len(cal_pix)):
+                    cal_pix[y]+=abs(min(cal_pix))
+        # Save IR picture as png
+        graph.set_data(np.reshape(cal_pix,(8,8))) # updates heat map in 'real-time'
+        plt.draw() # plots updated heat map
+        plt.savefig("data/IR.png", bbox_inches='tight')
+        
+##define image recognition function
+async def get_center_of_people():
+    global has_heatsignal
+    global IRpos
+    global area
+    while(1):
         frame = cv2.imread('data/IR.png')#load current IR picture
         #resize to make processing faster
         frame = cv2.resize(frame, (600,600), interpolation = cv2.INTER_AREA)
@@ -146,64 +153,64 @@ async def get_center_of_people():
 
         # Find contours and sort using contour area
         cnts = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contours_poly = [None]*len(cnts)
-        boundRect = [None]*len(cnts)
-        centers = [None]*len(cnts)
-        radius = [None]*len(cnts)
         cnts = cnts[0] if len(cnts) == 2 else cnts[1]
         cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
-        global has_heatsignal
+        
         if(len(cnts)==0):
             has_heatsignal=False
             continue
         else: has_heatsignal=True
         i=0
-        for i, c in enumerate(cnts):
-            contours_poly[i] = cv2.approxPolyDP(c, 3, True) 
-            boundRect[i] = cv2.boundingRect(contours_poly[i])
-            centers[i], radius[i] = cv2.minEnclosingCircle(contours_poly[i])
-        global area
-        area=np.array([])
-        for i, c in enumerate(cnts):
-            #calculate the area of each contour
-            np.append(area,[cv2.contourArea(c)])	    
-        global IRpos
+        area=np.array([])       
         IRpos=np.array([])
-
         for i, c in enumerate(cnts):
             # Once we hit smaller contours, stop the loop
             if(cv2.contourArea(c) < 100):
                 break
+            np.append(area,[cv2.contourArea(c)])
             x,y,w,h = cv2.boundingRect(c)
             color = (0,255,0)
-            cv2.circle(frame, (int(centers[i][0]), int(centers[i][1])), int(radius[i]), color, 2)
-            np.append(IRpos,[int(centers[i][0]),int(centers[i][1])])
-            cv2.minEnclosingCircle( contours_poly[i], centers[i], radius[i] )
+            contours_poly = cv2.approxPolyDP(c, 3, True) 
+            centers, radius = cv2.minEnclosingCircle(contours_poly)
+            cv2.circle(frame, (int(centers[0]), int(centers[1])), int(radius), color, 2) #draw circular contour
+            np.append(IRpos,[int(centers[0]),int(centers[1])])
             font = cv2.FONT_HERSHEY_SIMPLEX
-            numberofpeople=get_numberofpeope(area(i))
-            cv2.putText(frame,f'{numberofpeople} people', (x,y), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
+            numberofpeople=get_numberofpeople(cv2.contourArea(c))
+            cv2.putText(frame,f'{numberofpeople} people', (x,y), font, 1, (0, 255, 0), 2, cv2.LINE_AA) #add text to circle
+        cv2.imwrite('data/IRdata.png', frame)
+        
+#continously stream data to videosink
 async def streamdata():
     while(1):
         if(has_heatsignal):
-            cv2.imwrite('data/IRdata.png', frame)
-            out.write(frame)
+            img= cv2.imread('data/IRdata.png')             
+            out.write(img)
 
-def getAreaincm2(pxarea):
+
+
+###some important functions:
+#convert pixel area to real area
+def get_Areaincm2(pxarea):
     if(not has_pos): #assume height=H0  
         out_area=pxarea*a**2  
     else: #use callibration to calculate the area  
-        out_area=pxarea*(a*H0/height)**2
+        out_area=pxarea*(a*height/H0)**2
     return out_area
 
-def get_numberofpeope(pxarea):    
-    return int(getAreaincm2(pxarea)/250)
+#estimate number of people with a given headsice
+def get_numberofpeople(pxarea):    
+    headsize=250 #in cm
+    return np.round(get_Areaincm2(pxarea)/headsize,1)
 
+#conver pixel length to cm
 def pxtocm(pxdata):
     while(not has_pos):#wait untill position is available
         time.sleep(0.5)
-    return pxdata*a*H0/height
+    return pxdata*a*height/H0 #intercept theorem R0/R=H0/H
 
+
+
+###main loop
 if __name__ == "__main__":
     try:
         init()
@@ -217,6 +224,5 @@ if __name__ == "__main__":
         print("CTRL-C: Program Stopping via Keyboard Interrupt...")
 
     finally:
-        out.close()
+        out.release()
         print("Exiting Loop")       
-
