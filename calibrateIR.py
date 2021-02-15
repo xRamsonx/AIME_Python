@@ -6,13 +6,26 @@ sys.path.append(os.path.join(os.path.dirname(__file__),'..')) # this is done for
 from Adafruit_AMG88xx import Adafruit_AMG88xx
 from time import sleep
 import time
-#import matplotlib as mpl
-#mpl.use('TKAgg')
-#import matplotlib as mpl
-#mpl.use('tkagg') # to enable real-time plotting in Raspberry Pi
 import matplotlib.pyplot as plt
 import numpy as np
 
+###initialise
+sensor = Adafruit_AMG88xx(1)
+# wait for AMG to boot
+sleep(0.1)
+# preallocating variables
+norm_pix = [] #load IR data
+cal_vec = [] #interpolated IR data
+kk = 0 #counter for th calibration
+cal_size = 10 # size of calibration
+cal_pix = []
+Calibration=True 
+time_prev = time.time() # time for analyzing time between plot updates
+plt.ion() #initialise matplotlib
+img_array = [] 
+
+
+###define image recognition function
 def center_of_people():
     frame = cv2.imread('data/calIR.png')
     # Resize to make processing faster
@@ -32,48 +45,29 @@ def center_of_people():
 
     # Find contours and sort using contour area
     cnts = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours_poly = [None]*len(cnts)
-    boundRect = [None]*len(cnts)
-    centers = [None]*len(cnts)
-    radius = [None]*len(cnts)
     cnts = cnts[0] if len(cnts) == 2 else cnts[1]
     cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
-    i=0
-    for i, c in enumerate(cnts):
-	    contours_poly[i] = cv2.approxPolyDP(c, 3, True) 
-	    boundRect[i] = cv2.boundingRect(contours_poly[i])
-	    centers[i], radius[i] = cv2.minEnclosingCircle(contours_poly[i])
     IRpos=[]
     for i, c in enumerate(cnts):
  	   # Once we hit smaller contours, stop the loop
         if(cv2.contourArea(c) < 100):
             break
-	   # Draw bounding box around contours and write "Candles" text
+
+        x,y,w,h = cv2.boundingRect(c) #get counter data
         color = (0,255,0)
-        cv2.circle(frame, (int(centers[i][0]), int(centers[i][1])), int(radius[i]), color, 2)
-        IRpos.append([int(centers[i][0]),int(centers[i][1])])
-        cv2.minEnclosingCircle( contours_poly[i], centers[i], radius[i] )
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(frame,'Candle', (x,y), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
-    # Write images to disk for debugging
-    #cv2.imwrite('data/thresh.png', mask)
+        #estimate circular dimension
+        contours_poly = cv2.approxPolyDP(c, 3, True)
+        centers, radius = cv2.minEnclosingCircle(contours_poly)
+        cv2.circle(frame, (int(centers[0]), int(centers[1])), int(radius), color, 2) #draw circular contour
+        IRpos.append([int(centers[0]),int(centers[1])])
+        font = cv2.FONT_HERSHEY_SIMPLEX 
+        cv2.putText(frame,'Candle', (x,y), font, 1, (0, 255, 0), 2, cv2.LINE_AA) #draw text
+        
+    #Write image to disk
     cv2.imwrite('data/IRCalib.png', frame)
     return IRpos
-        
-sensor = Adafruit_AMG88xx(1)
-# wait for AMG to boot
-sleep(0.1)
 
-# preallocating variables
-norm_pix = []
-cal_vec = []
-kk = 0
-cal_size = 10 # size of calibration
-cal_pix = []
-time_prev = time.time() # time for analyzing time between plot updates
-Calibration=True
-plt.ion()
-
+###main function
 try:
     print("For initial calibration use two candles and put one directly under the IR camera and one in a distance d away from it. Then measure the distance d as well as the height of the camera. Don't light the candles yet!")
     print("When done press Enter to continue")
@@ -85,8 +79,7 @@ try:
             graph = plt.imshow(np.reshape(np.repeat(0,64),(8,8)),cmap=plt.cm.hot,interpolation='lanczos')
             #plt.colorbar()
             plt.axis('off')
-            plt.clim(1,8) # can set these limits to desired range or min/max of current sensor reading
-            
+            plt.clim(1,8) # can set these limits to desired range or min/max of current sensor reading  
         norm_pix = sensor.readPixels() # read pixels
         if kk<cal_size+1:
             kk+=1
@@ -104,13 +97,11 @@ try:
             if min(cal_pix)<0:
                 for y in range(0,len(cal_pix)):
                     cal_pix[y]+=abs(min(cal_pix))
-        # Moving Pixel Plot #
-        #print(np.reshape(cal_pix,(8,8))) # this helps view the output to ensure the plot is correct
+                    
         graph.set_data(np.reshape(cal_pix,(8,8))) # updates heat map in 'real-time'
         plt.draw() # plots updated heat map
         plt.savefig("data/calIR.png", bbox_inches='tight')
         cal_pix = [] # off-load variable for next reading
-        print(time.time()-time_prev) # prints out time between plot updates
         time_prev = time.time()
         if(Calibration):
             print("Now light the candles")
