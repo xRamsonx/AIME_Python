@@ -14,6 +14,7 @@ import cv2
 global H0
 global a
 a,H0=np.loadtxt('data/calIR.csv')
+#load sensor
 sensor = Adafruit_AMG88xx(1)
 # wait for AMG to boot
 sleep(0.1)
@@ -124,5 +125,5 @@ except KeyboardInterrupt:
         print("CTRL-C: Program Stopping via Keyboard Interrupt...")
 
 finally:
-        out.release() #
+        out.release() #to make sure nothing breaks down
         print("Exiting Loop") 
