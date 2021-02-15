@@ -110,6 +110,8 @@ try:
             if min(cal_pix)<0:
                 for y in range(0,len(cal_pix)):
                     cal_pix[y]+=abs(min(cal_pix))
+                    
+        graph.set_data(np.reshape(cal_pix,(8,8)))#update heatmap
         plt.draw() # plots updated heat map
         plt.savefig("data/IR.png", bbox_inches='tight') # save heatmap
         cal_pix = [] # off-load variable for next reading
